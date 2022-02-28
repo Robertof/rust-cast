@@ -56,7 +56,7 @@ pub enum ChannelMessage {
 
 /// Structure that manages connection to a cast device.
 pub struct CastDevice<'a> {
-    message_manager: Lrc<MessageManager<SslStream<TcpStream>>>,
+    pub message_manager: Lrc<MessageManager<SslStream<TcpStream>>>,
 
     /// Channel that manages connection responses/requests.
     pub connection: ConnectionChannel<'a, SslStream<TcpStream>>,
