@@ -3,7 +3,14 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use crate::{cast::cast_channel, errors::Error, utils};
+use crate::{
+    cast::{
+        cast_channel,
+        cast_channel::cast_message::{PayloadType, ProtocolVersion},
+    },
+    errors::Error,
+    utils,
+};
 
 struct Lock<T>(
     #[cfg(feature = "thread_safe")] std::sync::Mutex<T>,
@@ -128,7 +135,7 @@ where
     pub fn send(&self, message: CastMessage) -> Result<(), Error> {
         let mut raw_message = cast_channel::CastMessage::new();
 
-        raw_message.set_protocol_version(cast_channel::CastMessage_ProtocolVersion::CASTV2_1_0);
+        raw_message.set_protocol_version(ProtocolVersion::CASTV2_1_0);
 
         raw_message.set_namespace(message.namespace);
         raw_message.set_source_id(message.source);
@@ -136,12 +143,12 @@ where
 
         match message.payload {
             CastMessagePayload::String(payload) => {
-                raw_message.set_payload_type(cast_channel::CastMessage_PayloadType::STRING);
+                raw_message.set_payload_type(PayloadType::STRING);
                 raw_message.set_payload_utf8(payload);
             }
 
             CastMessagePayload::Binary(payload) => {
-                raw_message.set_payload_type(cast_channel::CastMessage_PayloadType::BINARY);
+                raw_message.set_payload_type(PayloadType::BINARY);
                 raw_message.set_payload_binary(payload);
             }
         };
@@ -155,7 +162,7 @@ where
         writer.write_all(&message_length_buffer)?;
         writer.write_all(&message_content_buffer)?;
 
-        debug!("Message sent: {:?}", raw_message);
+        log::debug!("Message sent: {:?}", raw_message);
 
         Ok(())
     }
@@ -265,18 +272,18 @@ where
 
         let raw_message = utils::from_vec::<cast_channel::CastMessage>(buffer.to_vec())?;
 
-        debug!("Message received: {:?}", raw_message);
+        log::debug!("Message received: {:?}", raw_message);
 
         Ok(CastMessage {
-            namespace: raw_message.get_namespace().to_string(),
-            source: raw_message.get_source_id().to_string(),
-            destination: raw_message.get_destination_id().to_string(),
-            payload: match raw_message.get_payload_type() {
-                cast_channel::CastMessage_PayloadType::STRING => {
-                    CastMessagePayload::String(raw_message.get_payload_utf8().to_string())
+            namespace: raw_message.namespace().to_string(),
+            source: raw_message.source_id().to_string(),
+            destination: raw_message.destination_id().to_string(),
+            payload: match raw_message.payload_type() {
+                PayloadType::STRING => {
+                    CastMessagePayload::String(raw_message.payload_utf8().to_string())
                 }
-                cast_channel::CastMessage_PayloadType::BINARY => {
-                    CastMessagePayload::Binary(raw_message.get_payload_binary().to_owned())
+                PayloadType::BINARY => {
+                    CastMessagePayload::Binary(raw_message.payload_binary().to_owned())
                 }
             },
         })

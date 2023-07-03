@@ -1,11 +1,12 @@
-use openssl::error::ErrorStack;
-use openssl::ssl::HandshakeError;
-use protobuf::ProtobufError;
+use openssl::{error::ErrorStack, ssl::HandshakeError};
+use protobuf::Error as ProtobufError;
 use serde_json::error::Error as SerializationError;
-use std::error::Error as StdError;
-use std::fmt::{Display, Formatter, Result};
-use std::io::Error as IoError;
-use std::net::TcpStream;
+use std::{
+    error::Error as StdError,
+    fmt::{Display, Formatter, Result},
+    io::Error as IoError,
+    net::TcpStream,
+};
 
 /// Consolidates possible error types that can occur in the OpenSSL lib.
 #[derive(Debug)]
@@ -48,6 +49,8 @@ pub enum Error {
     Serialization(SerializationError),
     /// This variant includes any error that comes from OpenSSL.
     Ssl(SslError),
+    /// Problems with given namespace
+    Namespace(String),
 }
 
 impl Display for Error {
@@ -58,6 +61,7 @@ impl Display for Error {
             Error::Protobuf(ref err) => Display::fmt(&err, f),
             Error::Serialization(ref err) => Display::fmt(&err, f),
             Error::Ssl(ref err) => Display::fmt(&err, f),
+            Error::Namespace(ref err) => Display::fmt(&err, f),
         }
     }
 }
@@ -70,6 +74,7 @@ impl StdError for Error {
             Error::Ssl(ref err) => Some(err),
             Error::Serialization(ref err) => Some(err),
             Error::Internal(_) => None,
+            Error::Namespace(_) => None,
         }
     }
 }

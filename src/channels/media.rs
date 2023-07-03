@@ -636,6 +636,14 @@ where
                         ));
                     }
                 }
+                MediaResponse::InvalidRequest(error) => {
+                    if error.request_id == request_id {
+                        return Err(Error::Internal(format!(
+                            "Load failed because of invalid media request (reason: {}).",
+                            error.reason.unwrap_or_else(|| "UNKNOWN".to_string())
+                        )));
+                    }
+                }
                 _ => {}
             }
 

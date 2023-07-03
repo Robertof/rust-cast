@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,12 @@ syntax = "proto2";
 
 option optimize_for = LITE_RUNTIME;
 
-package cast_channel.proto;
+// TODO(crbug.com/openscreen/90): Rename to openscreen.cast, to update to the
+// current namespacing of the library. Also, this file should probably be moved
+// to the public directory. And, all of this will have to be coordinated with a
+// DEPS roll in Chromium (since Chromium code depends on this).
+
+package cast.channel;
 
 message AuthorityKeys {
   message Key {

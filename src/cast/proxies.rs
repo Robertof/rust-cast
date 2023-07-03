@@ -1,5 +1,7 @@
 /// Proxy classes for the `connection` channel.
 pub mod connection {
+    use serde::Serialize;
+
     #[derive(Serialize, Debug)]
     pub struct ConnectionRequest {
         #[serde(rename = "type")]
@@ -11,6 +13,8 @@ pub mod connection {
 
 /// Proxy classes for the `heartbeat` channel.
 pub mod heartbeat {
+    use serde::Serialize;
+
     #[derive(Serialize, Debug)]
     pub struct HeartBeatRequest {
         #[serde(rename = "type")]
@@ -20,6 +24,8 @@ pub mod heartbeat {
 
 /// Proxy classes for the `media` channel.
 pub mod media {
+    use serde::{Deserialize, Serialize};
+
     #[derive(Serialize, Debug)]
     pub struct GetStatusRequest {
         #[serde(rename = "requestId")]
@@ -211,14 +217,11 @@ pub mod media {
     }
 
     #[derive(Serialize, Debug)]
-    pub struct CustomData {
-        #[serde(skip_serializing)]
-        private: (),
-    }
+    pub struct CustomData {}
 
     impl CustomData {
         pub fn new() -> CustomData {
-            CustomData { private: () }
+            CustomData {}
         }
     }
 
@@ -255,27 +258,18 @@ pub mod media {
     pub struct LoadCancelledReply {
         #[serde(rename = "requestId")]
         pub request_id: i32,
-
-        #[serde(rename = "type")]
-        typ: String,
     }
 
     #[derive(Deserialize, Debug)]
     pub struct LoadFailedReply {
         #[serde(rename = "requestId")]
         pub request_id: i32,
-
-        #[serde(rename = "type")]
-        typ: String,
     }
 
     #[derive(Deserialize, Debug)]
     pub struct InvalidPlayerStateReply {
         #[serde(rename = "requestId")]
         pub request_id: i32,
-
-        #[serde(rename = "type")]
-        typ: String,
     }
 
     #[derive(Deserialize, Debug)]
@@ -293,6 +287,8 @@ pub mod media {
 /// Proxy classes for the `receiver` channel.
 pub mod receiver {
     use std::borrow::Cow;
+
+    use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Debug)]
     pub struct AppLaunchRequest {

@@ -1,0 +1,60 @@
+name: Rust Cast CI
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'LICENSE'
+      - '*.md'
+  pull_request:
+    branches: [ main ]
+    paths-ignore:
+      - 'LICENSE'
+      - '*.md'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  ci:
+    name: Build (Linux)
+
+    strategy:
+      matrix:
+        rust: [stable]
+        os: [ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v3
+        name: Checkout
+
+      # Always install nightly toolchain for `Rustfmt`.
+      - name: Install toolchain ${{ matrix.rust }}
+        run: |
+          rustup toolchain install ${{ matrix.rust }} nightly
+          rustup override set ${{ matrix.rust }}
+          rustup component add clippy
+          rustup component add --toolchain nightly rustfmt
+
+      - name: Cache Dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check format
+        run:  cargo +nightly fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build (default features)
+        run: cargo build --release --examples
+
+      - name: Build (thread-safe feature)
+        run: cargo build --release --examples --features thread_safe
+
+      - name: Test (default features)
+        run:  cargo test
+
+      - name: Test (thread-safe feature)
+        run: cargo test --features thread_safe

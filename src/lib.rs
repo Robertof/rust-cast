@@ -1,14 +1,4 @@
-#![doc(html_root_url = "https://azasypkin.github.io/rust-cast/")]
-
-extern crate byteorder;
-#[macro_use]
-extern crate log;
-extern crate openssl;
-extern crate protobuf;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_json;
+#![deny(warnings)]
 
 mod cast;
 pub mod channels;
@@ -16,15 +6,16 @@ pub mod errors;
 pub mod message_manager;
 mod utils;
 
-use std::borrow::Cow;
-use std::net::TcpStream;
+use std::{borrow::Cow, net::TcpStream};
 
 use openssl::ssl::{SslConnector, SslMethod, SslStream, SslVerifyMode};
 
-use channels::connection::{ConnectionChannel, ConnectionResponse};
-use channels::heartbeat::{HeartbeatChannel, HeartbeatResponse};
-use channels::media::{MediaChannel, MediaResponse};
-use channels::receiver::{ReceiverChannel, ReceiverResponse};
+use channels::{
+    connection::{ConnectionChannel, ConnectionResponse},
+    heartbeat::{HeartbeatChannel, HeartbeatResponse},
+    media::{MediaChannel, MediaResponse},
+    receiver::{ReceiverChannel, ReceiverResponse},
+};
 
 use errors::Error;
 
@@ -102,9 +93,10 @@ impl<'a> CastDevice<'a> {
     {
         let host = host.into();
 
-        debug!(
+        log::debug!(
             "Establishing connection with cast device at {}:{}...",
-            host, port
+            host,
+            port
         );
 
         let connector = SslConnector::builder(SslMethod::tls())?.build();
@@ -144,9 +136,10 @@ impl<'a> CastDevice<'a> {
     {
         let host = host.into();
 
-        debug!(
+        log::debug!(
             "Establishing non-verified connection with cast device at {}:{}...",
-            host, port
+            host,
+            port
         );
 
         let mut builder = SslConnector::builder(SslMethod::tls())?;
@@ -155,9 +148,10 @@ impl<'a> CastDevice<'a> {
         let connector = builder.build();
         let tcp_stream = TcpStream::connect((host.as_ref(), port))?;
 
-        debug!(
+        log::debug!(
             "Connection with {}:{} successfully established.",
-            host, port
+            host,
+            port
         );
 
         CastDevice::connect_to_device(connector.connect(host.as_ref(), tcp_stream)?)

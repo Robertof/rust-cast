@@ -6,6 +6,8 @@ use std::{
     string::ToString,
 };
 
+use serde::Serialize;
+
 use crate::{
     cast::proxies,
     errors::Error,
@@ -37,33 +39,33 @@ pub struct Volume {
     pub muted: Option<bool>,
 }
 
-/// This `Into<Volume>` implementation is useful when only volume level is needed.
-impl Into<Volume> for f32 {
-    fn into(self) -> Volume {
-        Volume {
-            level: Some(self),
+/// This `From<f32>` implementation is useful when only volume level is needed.
+impl From<f32> for Volume {
+    fn from(level: f32) -> Self {
+        Self {
+            level: Some(level),
             muted: None,
         }
     }
 }
 
-/// This `Into<Volume>` implementation is useful when only mute/unmute state is needed.
-impl Into<Volume> for bool {
-    fn into(self) -> Volume {
-        Volume {
+/// This `From<bool>` implementation is useful when only mute/unmute state is needed.
+impl From<bool> for Volume {
+    fn from(muted: bool) -> Self {
+        Self {
             level: None,
-            muted: Some(self),
+            muted: Some(muted),
         }
     }
 }
 
-/// This `Into<Volume>` implementation is useful when both volume level and mute/unmute state are
+/// This `From<(f32, bool)>` implementation is useful when both volume level and mute/unmute state are
 /// needed.
-impl Into<Volume> for (f32, bool) {
-    fn into(self) -> Volume {
-        Volume {
-            level: Some(self.0),
-            muted: Some(self.1),
+impl From<(f32, bool)> for Volume {
+    fn from((level, muted): (f32, bool)) -> Self {
+        Self {
+            level: Some(level),
+            muted: Some(muted),
         }
     }
 }
@@ -251,6 +253,44 @@ where
 
             Ok(None)
         })
+    }
+
+    /// Broadcasts a message over a cast device's message bus.
+    ///
+    /// Receiver can observe messages using `context.addCustomMessageListener` with custom namespace.
+    ///
+    /// ```javascript, no_run
+    /// context.addCustomMessageListener('urn:x-cast:com.example.castdata', function(customEvent) {
+    ///   // do something with message
+    /// });
+    /// ```
+    ///
+    /// Namespace should start with `urn:x-cast:`
+    ///
+    /// # Arguments
+    ///
+    /// * `namespace` - Message namespace that should start with `urn:x-cast:`.
+    /// * `message` - Message instance to send.
+    pub fn broadcast_message<M: Serialize>(
+        &self,
+        namespace: &str,
+        message: &M,
+    ) -> Result<(), Error> {
+        if !namespace.starts_with("urn:x-cast:") {
+            return Err(Error::Namespace(format!(
+                "'{}' should start with 'urn:x-cast:' prefix",
+                namespace
+            )));
+        }
+        let payload = serde_json::to_string(message)?;
+        self.message_manager.send(CastMessage {
+            namespace: namespace.to_string(),
+            source: self.sender.to_string(),
+            destination: "*".into(),
+            payload: CastMessagePayload::String(payload),
+        })?;
+
+        Ok(())
     }
 
     /// Stops currently active app using corresponding `session_id`.

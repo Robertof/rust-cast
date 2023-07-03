@@ -1,16 +1,17 @@
+use protobuf_codegen::{Codegen, Customize};
 use std::env;
-extern crate protoc_rust;
 
 fn main() {
     let generate_proto = env::var("GENERATE_PROTO").unwrap_or_else(|_| "false".to_string());
     if generate_proto == "true" {
-        protoc_rust::Codegen::new()
+        Codegen::new()
             .out_dir("src/cast")
-            .inputs(&[
+            .inputs([
                 "protobuf/authority_keys.proto",
                 "protobuf/cast_channel.proto",
             ])
-            .includes(&["protobuf"])
+            .includes(["protobuf"])
+            .customize(Customize::default().gen_mod_rs(false))
             .run()
             .expect("protoc");
     }
