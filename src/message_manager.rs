@@ -179,6 +179,11 @@ where
         request_id
     }
 
+    /// Drains the internal message buffer.
+    pub fn drain(&self) {
+        self.message_buffer.borrow_mut().clear();
+    }
+
     /// Reads next `CastMessage` from the stream.
     ///
     /// # Return value
