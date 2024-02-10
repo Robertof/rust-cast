@@ -63,7 +63,7 @@ where
         })
     }
 
-    pub fn pong(&self) -> Result<(), Error> {
+    pub fn pong<S: Into<Cow<'a, str>>>(&self, destination: S) -> Result<(), Error> {
         let payload = serde_json::to_string(&proxies::heartbeat::HeartBeatRequest {
             typ: MESSAGE_TYPE_PONG.to_string(),
         })?;
@@ -71,7 +71,7 @@ where
         self.message_manager.send(CastMessage {
             namespace: CHANNEL_NAMESPACE.to_string(),
             source: self.sender.to_string(),
-            destination: self.receiver.to_string(),
+            destination: destination.into().to_string(),
             payload: CastMessagePayload::String(payload),
         })
     }
