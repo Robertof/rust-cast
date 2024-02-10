@@ -1,13 +1,15 @@
 use std::{
     borrow::Cow,
-    io::{Read, Write},
+    io::{Read, Write}, collections::HashSet
 };
+
+use log::trace;
 
 use crate::{
     cast::proxies,
     errors::Error,
     message_manager::{CastMessage, CastMessagePayload, MessageManager},
-    Lrc,
+    Lrc, Lock,
 };
 
 const CHANNEL_NAMESPACE: &str = "urn:x-cast:com.google.cast.tp.connection";
@@ -29,6 +31,7 @@ where
 {
     sender: Cow<'a, str>,
     message_manager: Lrc<MessageManager<W>>,
+    connections: Lock<HashSet<String>>,
 }
 
 impl<'a, W> ConnectionChannel<'a, W>
@@ -42,6 +45,7 @@ where
         ConnectionChannel {
             sender: sender.into(),
             message_manager,
+            connections: Lock::new(HashSet::new()),
         }
     }
 
@@ -49,17 +53,29 @@ where
     where
         S: Into<Cow<'a, str>>,
     {
+        let destination = destination.into();
+
+        if self.connections.borrow().contains(destination.as_ref()) {
+            trace!("Suppressed call to connect to {} as channel is already connected", destination);
+            return Ok(());
+        }
+
         let payload = serde_json::to_string(&proxies::connection::ConnectionRequest {
             typ: MESSAGE_TYPE_CONNECT.to_string(),
             user_agent: CHANNEL_USER_AGENT.to_string(),
         })?;
 
+
         self.message_manager.send(CastMessage {
             namespace: CHANNEL_NAMESPACE.to_string(),
             source: self.sender.to_string(),
-            destination: destination.into().to_string(),
+            destination: destination.to_string(),
             payload: CastMessagePayload::String(payload),
-        })
+        })?;
+
+        self.connections.borrow_mut().insert(destination.into());
+
+        Ok(())
     }
 
     pub fn disconnect<S>(&self, destination: S) -> Result<(), Error>
