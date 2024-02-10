@@ -2,7 +2,7 @@ use std::{
     borrow::Cow,
     io::{Read, Write},
     str::FromStr,
-    string::ToString,
+    string::ToString, ops::Range,
 };
 
 use crate::{
@@ -300,6 +300,43 @@ impl ToString for ResumeState {
     }
 }
 
+/// Media track type.
+#[derive(Copy, Clone, Debug)]
+pub enum TrackType {
+    /// Text track.
+    Text,
+    /// Audio track.
+    Audio,
+    /// Video track.
+    Video,
+}
+
+impl FromStr for TrackType {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<TrackType, Error> {
+        match s {
+            "TEXT" => Ok(TrackType::Text),
+            "AUDIO" => Ok(TrackType::Audio),
+            "VIDEO" => Ok(TrackType::Video),
+            _ => Err(Error::Internal(format!("Unknown track type {}", s))),
+        }
+    }
+}
+
+/// This data structure describes track metadata information.
+#[derive(Clone, Debug)]
+pub struct Track {
+    /// The unique identifier of the track within the context of a MediaInformation object.
+    pub id: i32,
+    /// Describes the the type of track.
+    pub track_type: TrackType,
+    /// A descriptive, human-readable name for the track, for example, Spanish.
+    pub name: Option<String>,
+    /// An RFC 5646 language tag. If the track subtype is Subtitles, this field is mandatory.
+    pub language: Option<String>,
+}
+
 /// This data structure describes a media stream.
 #[derive(Clone, Debug)]
 pub struct Media {
@@ -314,6 +351,8 @@ pub struct Media {
     pub content_type: String,
     /// Generic, movie, TV show, music track, or photo metadata.
     pub metadata: Option<Metadata>,
+    /// The media tracks.
+    pub tracks: Vec<Track>,
     /// Duration of the currently playing stream in seconds.
     pub duration: Option<f32>,
 }
@@ -330,6 +369,8 @@ pub struct Status {
 /// Detailed status of the media artifact with respect to the session.
 #[derive(Clone, Debug)]
 pub struct StatusEntry {
+    /// List of IDs corresponding to the active Tracks.
+    pub active_track_ids: Vec<i32>,
     /// Unique ID for the playback of this specific session. This ID is set by the receiver at LOAD
     /// and can be used to identify a specific instance of a playback. For example, two playbacks of
     /// "Wish you were here" within the same session would each have a unique mediaSessionId.
@@ -337,6 +378,9 @@ pub struct StatusEntry {
     /// Full description of the content that is being played back. Only be returned in a status
     /// messages if the Media has changed.
     pub media: Option<Media>,
+    /// Seekable range of a live or event stream. It uses relative media time in seconds.
+    /// It will be undefined for VOD streams.
+    pub live_seekable_range: Option<Range<f32>>,
     /// Indicates whether the media time is progressing, and at what rate. This is independent of
     /// the player state since the media time can stop in any state. 1.0 is regular time, 0.5 is
     /// slow motion.
@@ -573,6 +617,7 @@ where
                 content_type: media.content_type.clone(),
                 metadata,
                 duration: media.duration,
+                tracks: vec![],
             },
 
             current_time: 0_f64,
@@ -828,6 +873,7 @@ where
 
                 let statuses_entries = reply.status.iter().map(|x| {
                     StatusEntry {
+                        active_track_ids: x.active_track_ids.clone(),
                         media_session_id: x.media_session_id,
                         media: x.media.as_ref().map(|m| {
                             Media {
@@ -835,9 +881,18 @@ where
                                 stream_type: StreamType::from_str(m.stream_type.as_ref()).unwrap(),
                                 content_type: m.content_type.to_string(),
                                 metadata: None, // TODO
+                                tracks: m.tracks.iter().map(|t| {
+                                    Track {
+                                        id: t.id,
+                                        track_type: TrackType::from_str(t.typ.as_ref()).unwrap(),
+                                        name: t.name.clone(),
+                                        language: t.language.clone(),
+                                    }
+                                }).collect(),
                                 duration: m.duration,
                             }
                         }),
+                        live_seekable_range: x.live_seekable_range.clone(),
                         playback_rate: x.playback_rate,
                         player_state: PlayerState::from_str(x.player_state.as_ref()).unwrap(),
                         idle_reason: x

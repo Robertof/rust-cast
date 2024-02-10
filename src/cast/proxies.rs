@@ -24,6 +24,8 @@ pub mod heartbeat {
 
 /// Proxy classes for the `media` channel.
 pub mod media {
+    use std::ops::Range;
+
     use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Debug)]
@@ -108,6 +110,7 @@ pub mod media {
         pub metadata: Option<Metadata>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub duration: Option<f32>,
+        pub tracks: Vec<Track>,
     }
 
     #[derive(Serialize, Deserialize, Debug)]
@@ -227,10 +230,14 @@ pub mod media {
 
     #[derive(Deserialize, Debug)]
     pub struct Status {
+        #[serde(default, rename = "activeTrackIds")]
+        pub active_track_ids: Vec<i32>,
         #[serde(rename = "mediaSessionId")]
         pub media_session_id: i32,
         #[serde(default)]
         pub media: Option<Media>,
+        #[serde(rename = "liveSeekableRange")]
+        pub live_seekable_range: Option<Range<f32>>,
         #[serde(rename = "playbackRate")]
         pub playback_rate: f32,
         #[serde(rename = "playerState")]
@@ -252,6 +259,18 @@ pub mod media {
         pub typ: String,
 
         pub status: Vec<Status>,
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct Track {
+        #[serde(rename = "trackId")]
+        pub id: i32,
+        #[serde(rename = "type")]
+        pub typ: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub language: Option<String>,
     }
 
     #[derive(Deserialize, Debug)]
