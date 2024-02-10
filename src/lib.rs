@@ -6,7 +6,7 @@ pub mod errors;
 pub mod message_manager;
 mod utils;
 
-use std::{borrow::Cow, net::TcpStream};
+use std::{borrow::Cow, net::TcpStream, ops::{Deref, DerefMut}};
 
 use openssl::ssl::{SslConnector, SslMethod, SslStream, SslVerifyMode};
 
@@ -28,6 +28,75 @@ const DEFAULT_RECEIVER_ID: &str = "receiver-0";
 type Lrc<T> = std::sync::Arc<T>;
 #[cfg(not(feature = "thread_safe"))]
 type Lrc<T> = std::rc::Rc<T>;
+
+struct Lock<T>(
+    #[cfg(feature = "thread_safe")] std::sync::Mutex<T>,
+    #[cfg(not(feature = "thread_safe"))] std::cell::RefCell<T>,
+);
+
+struct LockGuard<'a, T>(
+    #[cfg(feature = "thread_safe")] std::sync::MutexGuard<'a, T>,
+    #[cfg(not(feature = "thread_safe"))] std::cell::Ref<'a, T>,
+);
+
+impl<'a, T> Deref for LockGuard<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+struct LockGuardMut<'a, T>(
+    #[cfg(feature = "thread_safe")] std::sync::MutexGuard<'a, T>,
+    #[cfg(not(feature = "thread_safe"))] std::cell::RefMut<'a, T>,
+);
+
+impl<'a, T> Deref for LockGuardMut<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl<'a, T> DerefMut for LockGuardMut<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.deref_mut()
+    }
+}
+
+impl<T> Lock<T> {
+    fn new(data: T) -> Self {
+        Lock({
+            #[cfg(feature = "thread_safe")]
+            let lock = std::sync::Mutex::new(data);
+            #[cfg(not(feature = "thread_safe"))]
+            let lock = std::cell::RefCell::new(data);
+            lock
+        })
+    }
+
+    fn borrow(&self) -> LockGuard<'_, T> {
+        LockGuard({
+            #[cfg(feature = "thread_safe")]
+            let guard = self.0.lock().unwrap();
+            #[cfg(not(feature = "thread_safe"))]
+            let guard = self.0.borrow();
+            guard
+        })
+    }
+
+    fn borrow_mut(&self) -> LockGuardMut<'_, T> {
+        LockGuardMut({
+            #[cfg(feature = "thread_safe")]
+            let guard = self.0.lock().unwrap();
+            #[cfg(not(feature = "thread_safe"))]
+            let guard = self.0.borrow_mut();
+            guard
+        })
+    }
+}
 
 /// Supported channel message types.
 #[derive(Clone, Debug)]
