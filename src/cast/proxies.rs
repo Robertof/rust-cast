@@ -324,6 +324,17 @@ pub mod media {
 
         pub reason: Option<String>,
     }
+
+    /// The media error encountered during media operations.
+    #[derive(Deserialize, Debug, PartialEq)]
+    #[serde(rename_all = "camelCase")]
+    pub struct MediaErrorReply {
+        /// The detailed error code associated with the media error.
+        pub detailed_error_code: i32,
+        /// The type of the error message.
+        #[serde(rename = "type")]
+        pub message_type: String,
+    }
 }
 
 /// Proxy classes for the `receiver` channel.
