@@ -237,6 +237,10 @@ where
             match self.parse(message)? {
                 ReceiverResponse::Status(mut status) => {
                     if status.request_id == request_id {
+                        if status.applications.is_empty() {
+                            return Err(Error::Internal("Could not run application".into()))
+                        }
+
                         return Ok(Some(status.applications.remove(0)));
                     }
                 }
