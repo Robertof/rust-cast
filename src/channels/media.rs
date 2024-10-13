@@ -62,6 +62,8 @@ impl ToString for StreamType {
     }
 }
 
+pub type CustomData = serde_json::Value;
+
 /// Generic, movie, TV show, music track, or photo metadata.
 #[derive(Clone, Debug)]
 pub enum Metadata {
@@ -554,6 +556,24 @@ where
     where
         S: Into<Cow<'a, str>>,
     {
+        self.load_with_custom_data(destination, session_id, media, None)
+    }
+
+    /// Loads provided media to the application with associated custom data.
+    ///
+    /// # Arguments
+    /// * `destination` - `protocol` of the application to load media with (e.g. `web-1`);
+    /// * `session_id` - Current session identifier of the player application;
+    /// * `media` - `Media` instance that describes the media we'd like to load.
+    /// * `custom_data` - serializable object with custom data.
+    ///
+    /// # Return value
+    ///
+    /// Returned `Result` should consist of either `Status` instance or an `Error`.
+    pub fn load_with_custom_data<S>(&self, destination: S, session_id: S, media: &Media, custom_data: Option<CustomData>) -> Result<Status, Error>
+    where
+        S: Into<Cow<'a, str>>,
+    {
         let request_id = self.message_manager.generate_request_id();
 
         let metadata = media.metadata.as_ref().map(|m| match *m {
@@ -618,6 +638,7 @@ where
                 metadata,
                 duration: media.duration,
                 tracks: vec![],
+                custom_data: custom_data,
             },
 
             current_time: 0_f64,

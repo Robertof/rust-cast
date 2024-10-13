@@ -1,4 +1,5 @@
 #![deny(warnings)]
+#![allow(dead_code)]
 
 mod cast;
 pub mod channels;

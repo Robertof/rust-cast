@@ -111,6 +111,8 @@ pub mod media {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub duration: Option<f32>,
         pub tracks: Vec<Track>,
+        #[serde(rename = "customData", skip_serializing_if = "Option::is_none")]
+        pub custom_data: Option<serde_json::Value>,
     }
 
     #[derive(Serialize, Deserialize, Debug)]
