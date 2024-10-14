@@ -20,6 +20,7 @@ const MESSAGE_TYPE_PLAY: &str = "PLAY";
 const MESSAGE_TYPE_PAUSE: &str = "PAUSE";
 const MESSAGE_TYPE_STOP: &str = "STOP";
 const MESSAGE_TYPE_SEEK: &str = "SEEK";
+const MESSAGE_TYPE_EDIT_TRACKS_INFO: &str = "EDIT_TRACKS_INFO";
 const MESSAGE_TYPE_MEDIA_STATUS: &str = "MEDIA_STATUS";
 const MESSAGE_TYPE_LOAD_CANCELLED: &str = "LOAD_CANCELLED";
 const MESSAGE_TYPE_LOAD_FAILED: &str = "LOAD_FAILED";
@@ -324,6 +325,27 @@ impl FromStr for TrackType {
             _ => Err(Error::Internal(format!("Unknown track type {}", s))),
         }
     }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TrackSelection {
+    /// Array of the Track trackIds that should be active.
+    ///
+    /// If it is not provided, the active tracks will not change.
+    /// If the array is empty, no track will be active.
+    pub active_track_ids: Option<Vec<i32>>,
+
+    /// Flag to enable or disable text tracks.
+    ///
+    /// If false it will disable all text tracks, if true it will enable the first text track,
+    /// or the previous active text tracks.
+    /// This flag is ignored if activeTrackIds or language is provided.
+    pub enable_text_tracks: Option<bool>,
+
+    /// Language for the tracks that should be active.
+    ///
+    /// The language field will take precedence over activeTrackIds if both are specified.
+    pub language: Option<String>,
 }
 
 /// This data structure describes track metadata information.
@@ -853,6 +875,48 @@ where
             current_time,
             resume_state: resume_state.map(|s| s.to_string()),
             custom_data: proxies::media::CustomData::new(),
+        })?;
+
+        self.message_manager.send(CastMessage {
+            namespace: CHANNEL_NAMESPACE.to_string(),
+            source: self.sender.to_string(),
+            destination: destination.into().to_string(),
+            payload: CastMessagePayload::String(payload),
+        })?;
+
+        self.receive_status_entry(request_id, media_session_id)
+    }
+
+    /// Modifies the text tracks style or change the tracks status. If a trackId does not match
+    /// the existing trackIds the whole request will fail and no status will change.
+    ///
+    /// # Arguments
+    ///
+    /// * `destination` - `protocol` of the media application (e.g. `web-1`);
+    /// * `media_session_id` - ID of the media session to modify tracks for;
+    /// * `track_selection` - Track selection data.
+    ///
+    /// # Return value
+    ///
+    /// Returned `Result` should consist of either `Status` instance or an `Error`.
+    pub fn edit_tracks<S>(
+        &self,
+        destination: S,
+        media_session_id: i32,
+        track_selection: TrackSelection,
+    ) -> Result<StatusEntry, Error>
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        let request_id = self.message_manager.generate_request_id();
+
+        let payload = serde_json::to_string(&proxies::media::EditTracksInfoRequest {
+            request_id,
+            media_session_id,
+            typ: MESSAGE_TYPE_EDIT_TRACKS_INFO.to_string(),
+            active_track_ids: track_selection.active_track_ids,
+            enable_text_tracks: track_selection.enable_text_tracks,
+            language: track_selection.language,
         })?;
 
         self.message_manager.send(CastMessage {

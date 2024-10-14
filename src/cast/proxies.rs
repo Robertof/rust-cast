@@ -98,6 +98,27 @@ pub mod media {
         pub custom_data: CustomData,
     }
 
+    #[derive(Serialize, Debug)]
+    pub struct EditTracksInfoRequest {
+        #[serde(rename = "requestId")]
+        pub request_id: i32,
+
+        #[serde(rename = "mediaSessionId")]
+        pub media_session_id: i32,
+
+        #[serde(rename = "type")]
+        pub typ: String,
+
+        #[serde(rename = "activeTrackIds", skip_serializing_if = "Option::is_none")]
+        pub active_track_ids: Option<Vec<i32>>,
+
+        #[serde(rename = "enableTextTracks", skip_serializing_if = "Option::is_none")]
+        pub enable_text_tracks: Option<bool>,
+
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub language: Option<String>,
+    }
+
     #[derive(Serialize, Deserialize, Debug)]
     pub struct Media {
         #[serde(rename = "contentId")]
