@@ -1059,7 +1059,7 @@ where
     where
         S: Into<Cow<'a, str>>,
     {
-        let request_id = self.message_manager.generate_request_id();
+        let request_id = self.message_manager.generate_request_id().get();
 
         let payload = serde_json::to_string(&proxies::media::EditTracksInfoRequest {
             request_id,

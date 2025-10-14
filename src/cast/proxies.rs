@@ -101,7 +101,7 @@ pub mod media {
     #[derive(Serialize, Debug)]
     pub struct EditTracksInfoRequest {
         #[serde(rename = "requestId")]
-        pub request_id: i32,
+        pub request_id: u32,
 
         #[serde(rename = "mediaSessionId")]
         pub media_session_id: i32,

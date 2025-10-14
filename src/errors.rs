@@ -47,6 +47,8 @@ pub enum Error {
     /// This variant includes everything related to (de)serialization of incoming and outgoing
     /// messages.
     Serialization(SerializationError),
+    /// Errors parsing messages (valid JSON but bad semantics)
+    Parsing(String),
     /// This variant includes any error that comes from OpenSSL.
     Ssl(SslError),
     /// Problems with given namespace
@@ -60,6 +62,7 @@ impl Display for Error {
             Error::Io(ref err) => Display::fmt(&err, f),
             Error::Protobuf(ref err) => Display::fmt(&err, f),
             Error::Serialization(ref err) => Display::fmt(&err, f),
+            Error::Parsing(ref message) => f.write_str(message),
             Error::Ssl(ref err) => Display::fmt(&err, f),
             Error::Namespace(ref err) => Display::fmt(&err, f),
         }
@@ -73,6 +76,7 @@ impl StdError for Error {
             Error::Protobuf(ref err) => Some(err),
             Error::Ssl(ref err) => Some(err),
             Error::Serialization(ref err) => Some(err),
+            Error::Parsing(_) => None,
             Error::Internal(_) => None,
             Error::Namespace(_) => None,
         }

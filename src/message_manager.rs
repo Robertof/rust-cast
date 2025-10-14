@@ -1,7 +1,6 @@
 use std::{
     io::{Read, Write},
     num::NonZeroU32,
-    ops::{Deref, DerefMut},
 };
 
 use crate::{
