@@ -131,6 +131,7 @@ pub mod media {
         pub metadata: Option<Metadata>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub duration: Option<f32>,
+        #[serde(default)]
         pub tracks: Vec<Track>,
         #[serde(rename = "customData", skip_serializing_if = "Option::is_none")]
         pub custom_data: Option<serde_json::Value>,
@@ -162,6 +163,7 @@ pub mod media {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub composer: Option<String>,
 
+        #[serde(default)]
         pub images: Vec<Image>,
 
         #[serde(skip_serializing_if = "Option::is_none", rename = "releaseDate")]
