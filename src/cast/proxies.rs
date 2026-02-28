@@ -53,8 +53,8 @@ pub mod media {
 
         pub media: Media,
 
-        #[serde(rename = "currentTime")]
-        pub current_time: f64,
+        #[serde(rename = "currentTime", skip_serializing_if = "Option::is_none")]
+        pub current_time: Option<f64>,
 
         #[serde(rename = "customData")]
         pub custom_data: CustomData,

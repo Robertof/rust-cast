@@ -814,7 +814,7 @@ where
                 custom_data: custom_data,
             },
 
-            current_time: 0_f64,
+            current_time: None,
             autoplay: true,
             custom_data: proxies::media::CustomData::new(),
         })?;
