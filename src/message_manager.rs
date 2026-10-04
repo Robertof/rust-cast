@@ -186,6 +186,11 @@ where
         self.message_buffer.borrow_mut().clear();
     }
 
+    /// Calls `f` with a reference to the underlying stream, e.g. to configure socket options.
+    pub(crate) fn with_stream<R>(&self, f: impl FnOnce(&S) -> R) -> R {
+        f(&self.stream.borrow())
+    }
+
     /// Reads next `CastMessage` from the stream.
     ///
     /// # Return value

@@ -7,7 +7,7 @@ pub mod errors;
 pub mod message_manager;
 mod utils;
 
-use std::{borrow::Cow, net::TcpStream, ops::{Deref, DerefMut}};
+use std::{borrow::Cow, net::TcpStream, ops::{Deref, DerefMut}, time::Duration};
 
 use openssl::ssl::{SslConnector, SslMethod, SslStream, SslVerifyMode};
 
@@ -280,6 +280,21 @@ impl<'a> CastDevice<'a> {
         }
 
         Ok(ChannelMessage::Raw(cast_message))
+    }
+
+    /// Sets the read timeout of the underlying socket. `None` (the default) blocks indefinitely.
+    ///
+    /// When set, any call waiting for a message from the cast device fails with `Error::Io` if no
+    /// data at all is received for `timeout`. Since cast devices regularly send heartbeat pings,
+    /// this mostly detects devices that disappeared from the network without closing the
+    /// connection.
+    ///
+    /// After a timeout the connection should be dropped, as it may have occurred in the middle of
+    /// a message, leaving the stream in an inconsistent state.
+    pub fn set_read_timeout(&self, timeout: Option<Duration>) -> Result<(), Error> {
+        Ok(self
+            .message_manager
+            .with_stream(|stream| stream.get_ref().set_read_timeout(timeout))?)
     }
 
     /// Connects to the cast device using provided ssl stream.
