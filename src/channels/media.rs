@@ -674,20 +674,7 @@ where
     where
         S: Into<Cow<'a, str>>,
     {
-        let request_id = self.message_manager.generate_request_id().get();
-
-        let payload = serde_json::to_string(&proxies::media::GetStatusRequest {
-            typ: MESSAGE_TYPE_GET_STATUS.to_string(),
-            request_id,
-            media_session_id,
-        })?;
-
-        self.message_manager.send(CastMessage {
-            namespace: CHANNEL_NAMESPACE.to_string(),
-            source: self.sender.to_string(),
-            destination: destination.into().to_string(),
-            payload: CastMessagePayload::String(payload),
-        })?;
+        let request_id = self.send_get_status(destination, media_session_id)?;
 
         self.message_manager.receive_find_map(|message| {
             if !self.can_handle(message) {
@@ -905,23 +892,9 @@ where
     where
         S: Into<Cow<'a, str>>,
     {
-        let request_id = self.message_manager.generate_request_id().get();
+        let request_id = self.send_pause(destination, media_session_id)?;
 
-        let payload = serde_json::to_string(&proxies::media::PlaybackGenericRequest {
-            request_id,
-            media_session_id,
-            typ: MESSAGE_TYPE_PAUSE.to_string(),
-            custom_data: proxies::media::CustomData::new(),
-        })?;
-
-        self.message_manager.send(CastMessage {
-            namespace: CHANNEL_NAMESPACE.to_string(),
-            source: self.sender.to_string(),
-            destination: destination.into().to_string(),
-            payload: CastMessagePayload::String(payload),
-        })?;
-
-        self.receive_status_entry(request_id, media_session_id)
+        self.wait_for_status(&[request_id], media_session_id)
     }
 
     /// Begins playback of the content that was loaded with the load call, playback is continued
@@ -939,23 +912,9 @@ where
     where
         S: Into<Cow<'a, str>>,
     {
-        let request_id = self.message_manager.generate_request_id().get();
+        let request_id = self.send_play(destination, media_session_id)?;
 
-        let payload = serde_json::to_string(&proxies::media::PlaybackGenericRequest {
-            request_id,
-            media_session_id,
-            typ: MESSAGE_TYPE_PLAY.to_string(),
-            custom_data: proxies::media::CustomData::new(),
-        })?;
-
-        self.message_manager.send(CastMessage {
-            namespace: CHANNEL_NAMESPACE.to_string(),
-            source: self.sender.to_string(),
-            destination: destination.into().to_string(),
-            payload: CastMessagePayload::String(payload),
-        })?;
-
-        self.receive_status_entry(request_id, media_session_id)
+        self.wait_for_status(&[request_id], media_session_id)
     }
 
     /// Stops playback of the current content. Triggers a STATUS event notification to all sender
@@ -974,23 +933,9 @@ where
     where
         S: Into<Cow<'a, str>>,
     {
-        let request_id = self.message_manager.generate_request_id().get();
+        let request_id = self.send_stop(destination, media_session_id)?;
 
-        let payload = serde_json::to_string(&proxies::media::PlaybackGenericRequest {
-            request_id,
-            media_session_id,
-            typ: MESSAGE_TYPE_STOP.to_string(),
-            custom_data: proxies::media::CustomData::new(),
-        })?;
-
-        self.message_manager.send(CastMessage {
-            namespace: CHANNEL_NAMESPACE.to_string(),
-            source: self.sender.to_string(),
-            destination: destination.into().to_string(),
-            payload: CastMessagePayload::String(payload),
-        })?;
-
-        self.receive_status_entry(request_id, media_session_id)
+        self.wait_for_status(&[request_id], media_session_id)
     }
 
     /// Sets the current position in the stream. Triggers a STATUS event notification to all sender
@@ -1017,25 +962,10 @@ where
     where
         S: Into<Cow<'a, str>>,
     {
-        let request_id = self.message_manager.generate_request_id().get();
+        let request_id =
+            self.send_seek(destination, media_session_id, current_time, resume_state)?;
 
-        let payload = serde_json::to_string(&proxies::media::PlaybackSeekRequest {
-            request_id,
-            media_session_id,
-            typ: MESSAGE_TYPE_SEEK.to_string(),
-            current_time,
-            resume_state: resume_state.map(|s| s.to_string()),
-            custom_data: proxies::media::CustomData::new(),
-        })?;
-
-        self.message_manager.send(CastMessage {
-            namespace: CHANNEL_NAMESPACE.to_string(),
-            source: self.sender.to_string(),
-            destination: destination.into().to_string(),
-            payload: CastMessagePayload::String(payload),
-        })?;
-
-        self.receive_status_entry(request_id, media_session_id)
+        self.wait_for_status(&[request_id], media_session_id)
     }
 
     /// Modifies the text tracks style or change the tracks status. If a trackId does not match
@@ -1059,25 +989,119 @@ where
     where
         S: Into<Cow<'a, str>>,
     {
+        let request_id = self.send_edit_tracks(destination, media_session_id, track_selection)?;
+
+        self.wait_for_status(&[request_id], media_session_id)
+    }
+
+    // Send-only variants of the requests above. Each one sends the request without waiting for
+    // the reply and returns its request ID, which can then be passed to `wait_for_status`.
+    //
+    // This allows callers to decide how to wait. For example, some receivers (such as Shaka's)
+    // don't echo the request ID of playback commands, but do echo it for GET_STATUS: sending a
+    // command followed by a GET_STATUS and waiting for either reply works with both kinds of
+    // receivers.
+
+    /// Sends a GET_STATUS request without waiting for the reply. See `get_status`.
+    pub fn send_get_status<S>(
+        &self,
+        destination: S,
+        media_session_id: Option<i32>,
+    ) -> Result<u32, Error>
+    where
+        S: Into<Cow<'a, str>>,
+    {
         let request_id = self.message_manager.generate_request_id().get();
 
-        let payload = serde_json::to_string(&proxies::media::EditTracksInfoRequest {
-            request_id,
-            media_session_id,
-            typ: MESSAGE_TYPE_EDIT_TRACKS_INFO.to_string(),
-            active_track_ids: track_selection.active_track_ids,
-            enable_text_tracks: track_selection.enable_text_tracks,
-            language: track_selection.language,
-        })?;
+        self.send_request(
+            destination,
+            &proxies::media::GetStatusRequest {
+                typ: MESSAGE_TYPE_GET_STATUS.to_string(),
+                request_id,
+                media_session_id,
+            },
+        )?;
 
-        self.message_manager.send(CastMessage {
-            namespace: CHANNEL_NAMESPACE.to_string(),
-            source: self.sender.to_string(),
-            destination: destination.into().to_string(),
-            payload: CastMessagePayload::String(payload),
-        })?;
+        Ok(request_id)
+    }
 
-        self.receive_status_entry(request_id, media_session_id)
+    /// Sends a PAUSE request without waiting for the reply. See `pause`.
+    pub fn send_pause<S>(&self, destination: S, media_session_id: i32) -> Result<u32, Error>
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        self.send_playback_generic_request(destination, media_session_id, MESSAGE_TYPE_PAUSE)
+    }
+
+    /// Sends a PLAY request without waiting for the reply. See `play`.
+    pub fn send_play<S>(&self, destination: S, media_session_id: i32) -> Result<u32, Error>
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        self.send_playback_generic_request(destination, media_session_id, MESSAGE_TYPE_PLAY)
+    }
+
+    /// Sends a STOP request without waiting for the reply. See `stop`.
+    pub fn send_stop<S>(&self, destination: S, media_session_id: i32) -> Result<u32, Error>
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        self.send_playback_generic_request(destination, media_session_id, MESSAGE_TYPE_STOP)
+    }
+
+    /// Sends a SEEK request without waiting for the reply. See `seek`.
+    pub fn send_seek<S>(
+        &self,
+        destination: S,
+        media_session_id: i32,
+        current_time: Option<f32>,
+        resume_state: Option<ResumeState>,
+    ) -> Result<u32, Error>
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        let request_id = self.message_manager.generate_request_id().get();
+
+        self.send_request(
+            destination,
+            &proxies::media::PlaybackSeekRequest {
+                request_id,
+                media_session_id,
+                typ: MESSAGE_TYPE_SEEK.to_string(),
+                current_time,
+                resume_state: resume_state.map(|s| s.to_string()),
+                custom_data: proxies::media::CustomData::new(),
+            },
+        )?;
+
+        Ok(request_id)
+    }
+
+    /// Sends an EDIT_TRACKS_INFO request without waiting for the reply. See `edit_tracks`.
+    pub fn send_edit_tracks<S>(
+        &self,
+        destination: S,
+        media_session_id: i32,
+        track_selection: TrackSelection,
+    ) -> Result<u32, Error>
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        let request_id = self.message_manager.generate_request_id().get();
+
+        self.send_request(
+            destination,
+            &proxies::media::EditTracksInfoRequest {
+                request_id,
+                media_session_id,
+                typ: MESSAGE_TYPE_EDIT_TRACKS_INFO.to_string(),
+                active_track_ids: track_selection.active_track_ids,
+                enable_text_tracks: track_selection.enable_text_tracks,
+                language: track_selection.language,
+            },
+        )?;
+
+        Ok(request_id)
     }
 
     pub fn can_handle(&self, message: &CastMessage) -> bool {
@@ -1193,20 +1217,26 @@ where
         Ok(response)
     }
 
-    /// Waits for the status entry with specified `request_id` and `media_session_id`. This method
-    /// is very handy for the media playback methods where particular `StatusEntry` is required.
+    /// Waits for the reply to any of the requests in `request_ids`, and returns the status entry
+    /// for `media_session_id` it contains.
+    ///
+    /// Passing several request IDs allows confirming a command with a follow-up GET_STATUS (see
+    /// the `send_*` methods): whichever reply arrives first is used, and the others are left in
+    /// the message buffer.
     ///
     /// # Arguments
     ///
-    /// * `request_id` - ID of the request that caused status entry to be broadcasted.
-    /// * `media_session_id` - ID of the media session to receive.
+    /// * `request_ids` - IDs of the requests whose reply should be waited for;
+    /// * `media_session_id` - ID of the media session to return the status entry for.
     ///
     /// # Return value
     ///
-    /// Returned `Result` should consist of either `Status` instance or an `Error`.
-    fn receive_status_entry(
+    /// Returned `Result` should consist of either `StatusEntry` instance or an `Error`. An error is
+    /// also returned if the reply does not contain `media_session_id` (e.g. because the media
+    /// session has ended).
+    pub fn wait_for_status(
         &self,
-        request_id: u32,
+        request_ids: &[u32],
         media_session_id: i32,
     ) -> Result<StatusEntry, Error> {
         self.message_manager.receive_find_map(|message| {
@@ -1215,44 +1245,176 @@ where
             }
 
             match self.parse(message)? {
-                MediaResponse::Status(mut status) => {
-                    if status.request_id == request_id {
-                        let position = status
-                            .entries
-                            .iter()
-                            .position(|e| e.media_session_id == media_session_id);
+                MediaResponse::Status(mut status) if request_ids.contains(&status.request_id) => {
+                    let position = status
+                        .entries
+                        .iter()
+                        .position(|e| e.media_session_id == media_session_id);
 
-                        return Ok(position.map(|position| status.entries.remove(position)));
+                    match position {
+                        Some(position) => Ok(Some(status.entries.remove(position))),
+                        None => Err(Error::Internal(format!(
+                            "Media session {} not found in status reply.",
+                            media_session_id
+                        ))),
                     }
                 }
-                MediaResponse::InvalidPlayerState(error) => {
-                    if error.request_id == request_id {
-                        return Err(Error::Internal(
-                            "Request failed because of invalid player state.".to_string(),
-                        ));
-                    }
+                MediaResponse::InvalidPlayerState(error)
+                    if request_ids.contains(&error.request_id) =>
+                {
+                    Err(Error::Internal(
+                        "Request failed because of invalid player state.".to_string(),
+                    ))
                 }
-                MediaResponse::InvalidRequest(error) => {
-                    if error.request_id == request_id {
-                        return Err(Error::Internal(format!(
-                            "Invalid request ({}).",
-                            error.reason.unwrap_or_else(|| "Unknown".to_string())
-                        )));
-                    }
+                MediaResponse::InvalidRequest(error) if request_ids.contains(&error.request_id) => {
+                    Err(Error::Internal(format!(
+                        "Invalid request ({}).",
+                        error.reason.unwrap_or_else(|| "Unknown".to_string())
+                    )))
                 }
-                _ => {}
+                _ => Ok(None),
             }
+        })
+    }
 
-            Ok(None)
+    fn send_playback_generic_request<S>(
+        &self,
+        destination: S,
+        media_session_id: i32,
+        typ: &str,
+    ) -> Result<u32, Error>
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        let request_id = self.message_manager.generate_request_id().get();
+
+        self.send_request(
+            destination,
+            &proxies::media::PlaybackGenericRequest {
+                request_id,
+                media_session_id,
+                typ: typ.to_string(),
+                custom_data: proxies::media::CustomData::new(),
+            },
+        )?;
+
+        Ok(request_id)
+    }
+
+    fn send_request<S, P>(&self, destination: S, payload: &P) -> Result<(), Error>
+    where
+        S: Into<Cow<'a, str>>,
+        P: serde::Serialize,
+    {
+        self.message_manager.send(CastMessage {
+            namespace: CHANNEL_NAMESPACE.to_string(),
+            source: self.sender.to_string(),
+            destination: destination.into().to_string(),
+            payload: CastMessagePayload::String(serde_json::to_string(payload)?),
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{channels::tests::MockTcpStream, DEFAULT_RECEIVER_ID, DEFAULT_SENDER_ID};
+    use crate::{
+        cast::cast_channel::{
+            self,
+            cast_message::{PayloadType, ProtocolVersion},
+        },
+        channels::tests::MockTcpStream,
+        utils, DEFAULT_RECEIVER_ID, DEFAULT_SENDER_ID,
+    };
 
     use super::*;
+
+    /// Returns a media channel whose stream will yield the given payloads, in order, as messages
+    /// sent by the receiver.
+    fn channel_receiving(payloads: &[String]) -> MediaChannel<'static, MockTcpStream> {
+        let mut stream = MockTcpStream::new();
+
+        for payload in payloads {
+            let mut message = cast_channel::CastMessage::new();
+            message.set_protocol_version(ProtocolVersion::CASTV2_1_0);
+            message.set_namespace(CHANNEL_NAMESPACE.to_string());
+            message.set_source_id(DEFAULT_RECEIVER_ID.to_string());
+            message.set_destination_id(DEFAULT_SENDER_ID.to_string());
+            message.set_payload_type(PayloadType::STRING);
+            message.set_payload_utf8(payload.clone());
+
+            let body = utils::to_vec(&message).unwrap();
+            stream
+                .read_buffer
+                .extend(utils::write_u32_to_buffer(body.len() as u32).unwrap());
+            stream.read_buffer.extend(body);
+        }
+
+        MediaChannel {
+            sender: Cow::from(DEFAULT_SENDER_ID),
+            message_manager: Lrc::new(MessageManager::new(stream)),
+        }
+    }
+
+    fn media_status(request_id: u32, entries: &[(i32, f32)]) -> String {
+        let entries = entries
+            .iter()
+            .map(|(media_session_id, current_time)| {
+                format!(
+                    "{{\"mediaSessionId\":{},\"playbackRate\":1,\"playerState\":\"PLAYING\",\
+                     \"currentTime\":{},\"supportedMediaCommands\":63}}",
+                    media_session_id, current_time
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+
+        format!(
+            "{{\"type\":\"MEDIA_STATUS\",\"requestId\":{},\"status\":[{}]}}",
+            request_id, entries
+        )
+    }
+
+    #[test]
+    fn test_wait_for_status_accepts_reply_to_any_request() {
+        // Mimics Shaka: an unsolicited status (requestId 0) and no reply to the command (ID 1),
+        // followed by the reply to the follow-up GET_STATUS (ID 2).
+        let channel =
+            channel_receiving(&[media_status(0, &[(0, 10.0)]), media_status(2, &[(0, 42.0)])]);
+
+        let entry = channel.wait_for_status(&[1, 2], 0).unwrap();
+
+        assert_eq!(entry.current_time, Some(42.0));
+    }
+
+    #[test]
+    fn test_wait_for_status_picks_requested_media_session() {
+        let channel = channel_receiving(&[media_status(1, &[(3, 10.0), (7, 42.0)])]);
+
+        let entry = channel.wait_for_status(&[1], 7).unwrap();
+
+        assert_eq!(entry.media_session_id, 7);
+        assert_eq!(entry.current_time, Some(42.0));
+    }
+
+    #[test]
+    fn test_wait_for_status_fails_when_media_session_is_missing() {
+        // Without this, the wait would continue until the connection is closed.
+        let channel = channel_receiving(&[media_status(1, &[]), media_status(2, &[(0, 42.0)])]);
+
+        assert!(channel.wait_for_status(&[1, 2], 0).is_err());
+    }
+
+    #[test]
+    fn test_wait_for_status_fails_on_invalid_player_state() {
+        let channel = channel_receiving(&[
+            "{\"type\":\"INVALID_PLAYER_STATE\",\"requestId\":5}".to_string(),
+            "{\"type\":\"INVALID_PLAYER_STATE\",\"requestId\":1}".to_string(),
+            media_status(2, &[(0, 42.0)]),
+        ]);
+
+        // the error for request 5 is not ours and must be skipped; the one for request 1 is.
+        assert!(channel.wait_for_status(&[1, 2], 0).is_err());
+    }
 
     #[test]
     fn test_parse_media_error() {
