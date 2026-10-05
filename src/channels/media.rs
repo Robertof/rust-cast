@@ -1405,6 +1405,30 @@ mod tests {
     }
 
     #[test]
+    fn test_wait_for_status_returns_reply_received_after_deadline() {
+        let channel = channel_receiving(&[media_status(1, &[(0, 42.0)])]);
+        channel
+            .message_manager
+            .set_deadline(Some(std::time::Instant::now()));
+
+        assert!(channel.wait_for_status(&[1], 0).is_ok());
+    }
+
+    #[test]
+    fn test_wait_for_status_fails_after_deadline() {
+        let channel =
+            channel_receiving(&[media_status(0, &[(0, 10.0)]), media_status(1, &[(0, 42.0)])]);
+        channel
+            .message_manager
+            .set_deadline(Some(std::time::Instant::now()));
+
+        match channel.wait_for_status(&[1], 0) {
+            Err(Error::Io(e)) => assert_eq!(e.kind(), std::io::ErrorKind::TimedOut),
+            other => panic!("expected a timeout, got {:?}", other.map(|_| ())),
+        }
+    }
+
+    #[test]
     fn test_wait_for_status_fails_on_invalid_player_state() {
         let channel = channel_receiving(&[
             "{\"type\":\"INVALID_PLAYER_STATE\",\"requestId\":5}".to_string(),

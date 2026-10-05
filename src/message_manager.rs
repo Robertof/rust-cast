@@ -1,6 +1,7 @@
 use std::{
-    io::{Read, Write},
+    io::{self, Read, Write},
     num::NonZeroU32,
+    time::Instant,
 };
 
 use crate::{
@@ -44,6 +45,7 @@ where
     message_buffer: Lock<Vec<CastMessage>>,
     stream: Lock<S>,
     request_counter: Lock<NonZeroU32>,
+    deadline: Lock<Option<Instant>>,
 }
 
 impl<S> MessageManager<S>
@@ -55,7 +57,19 @@ where
             stream: Lock::new(stream),
             message_buffer: Lock::new(vec![]),
             request_counter: Lock::new(NonZeroU32::MIN),
+            deadline: Lock::new(None),
         }
+    }
+
+    /// Sets a deadline for waiting for messages with `receive_find_map`, which is used by all the
+    /// requests waiting for a reply. Once it has passed, waiting fails with an `Error::Io` of kind
+    /// `TimedOut`. `None` (the default) waits indefinitely.
+    ///
+    /// The deadline is checked whenever a message is received. Cast devices regularly send
+    /// heartbeat pings, so waiting stops shortly after the deadline even if nothing else is
+    /// received. Unlike a read timeout, the connection can still be used afterwards.
+    pub fn set_deadline(&self, deadline: Option<Instant>) {
+        *self.deadline.borrow_mut() = deadline;
     }
 
     /// Sends `message` to the Cast Device.
@@ -165,6 +179,13 @@ where
             match f(&message)? {
                 Some(r) => return Ok(r),
                 None => self.message_buffer.borrow_mut().push(message),
+            }
+
+            if matches!(*self.deadline.borrow(), Some(deadline) if Instant::now() >= deadline) {
+                return Err(Error::Io(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "deadline exceeded while waiting for a message",
+                )));
             }
         }
     }
