@@ -66,6 +66,16 @@ impl ToString for StreamType {
 
 pub type CustomData = serde_json::Value;
 
+/// Options for loading media, see `MediaChannel::load_with_options`.
+#[derive(Clone, Debug, Default)]
+pub struct LoadOptions {
+    /// Position (in seconds) to start playback from. If not set, the receiver picks one, usually
+    /// the beginning for on demand content and the live edge for live content.
+    pub current_time: Option<f32>,
+    /// Custom data for the receiver application, attached to the media.
+    pub custom_data: Option<CustomData>,
+}
+
 /// Generic, movie, TV show, music track, or photo metadata.
 #[derive(Clone, Debug)]
 pub enum Metadata {
@@ -734,6 +744,38 @@ where
     where
         S: Into<Cow<'a, str>>,
     {
+        self.load_with_options(
+            destination,
+            session_id,
+            media,
+            LoadOptions {
+                custom_data,
+                ..Default::default()
+            },
+        )
+    }
+
+    /// Loads provided media to the application with the given options.
+    ///
+    /// # Arguments
+    /// * `destination` - `protocol` of the application to load media with (e.g. `web-1`);
+    /// * `session_id` - Current session identifier of the player application;
+    /// * `media` - `Media` instance that describes the media we'd like to load;
+    /// * `options` - `LoadOptions` such as the position to start playback from.
+    ///
+    /// # Return value
+    ///
+    /// Returned `Result` should consist of either `Status` instance or an `Error`.
+    pub fn load_with_options<S>(
+        &self,
+        destination: S,
+        session_id: S,
+        media: &Media,
+        options: LoadOptions,
+    ) -> Result<Status, Error>
+    where
+        S: Into<Cow<'a, str>>,
+    {
         let request_id = self.message_manager.generate_request_id().get();
 
         let metadata = media.metadata.as_ref().map(|m| match *m {
@@ -798,10 +840,10 @@ where
                 metadata,
                 duration: media.duration,
                 tracks: vec![],
-                custom_data: custom_data,
+                custom_data: options.custom_data,
             },
 
-            current_time: None,
+            current_time: options.current_time.map(f64::from),
             autoplay: true,
             custom_data: proxies::media::CustomData::new(),
         })?;
