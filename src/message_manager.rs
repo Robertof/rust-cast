@@ -181,9 +181,9 @@ where
         request_id
     }
 
-    /// Drains the internal message buffer.
-    pub fn drain(&self) {
-        self.message_buffer.borrow_mut().clear();
+    /// Drains the internal message buffer, returning the messages it contained (oldest first).
+    pub fn drain(&self) -> Vec<CastMessage> {
+        std::mem::take(&mut *self.message_buffer.borrow_mut())
     }
 
     /// Calls `f` with a reference to the underlying stream, e.g. to configure socket options.
