@@ -1373,12 +1373,24 @@ mod tests {
     /// Returns a media channel whose stream will yield the given payloads, in order, as messages
     /// sent by the receiver.
     fn channel_receiving(payloads: &[String]) -> MediaChannel<'static, MockTcpStream> {
+        let messages: Vec<_> = payloads
+            .iter()
+            .map(|payload| (CHANNEL_NAMESPACE, payload.clone()))
+            .collect();
+
+        channel_receiving_messages(&messages)
+    }
+
+    /// Like `channel_receiving`, with the namespace of each message.
+    fn channel_receiving_messages(
+        messages: &[(&str, String)],
+    ) -> MediaChannel<'static, MockTcpStream> {
         let mut stream = MockTcpStream::new();
 
-        for payload in payloads {
+        for (namespace, payload) in messages {
             let mut message = cast_channel::CastMessage::new();
             message.set_protocol_version(ProtocolVersion::CASTV2_1_0);
-            message.set_namespace(CHANNEL_NAMESPACE.to_string());
+            message.set_namespace(namespace.to_string());
             message.set_source_id(DEFAULT_RECEIVER_ID.to_string());
             message.set_destination_id(DEFAULT_SENDER_ID.to_string());
             message.set_payload_type(PayloadType::STRING);
@@ -1468,6 +1480,35 @@ mod tests {
             Err(Error::Io(e)) => assert_eq!(e.kind(), std::io::ErrorKind::TimedOut),
             other => panic!("expected a timeout, got {:?}", other.map(|_| ())),
         }
+    }
+
+    const PING: (&str, &str) = (
+        "urn:x-cast:com.google.cast.tp.heartbeat",
+        r#"{"type":"PING"}"#,
+    );
+
+    #[test]
+    fn test_wait_for_status_answers_pings() {
+        let channel = channel_receiving_messages(&[
+            (PING.0, PING.1.to_string()),
+            (CHANNEL_NAMESPACE, media_status(1, &[(0, 42.0)])),
+        ]);
+        channel.message_manager.set_answer_pings(true);
+
+        assert!(channel.wait_for_status(&[1], 0).is_ok());
+        // the ping was answered rather than kept for later.
+        assert!(channel.message_manager.drain().is_empty());
+    }
+
+    #[test]
+    fn test_wait_for_status_keeps_pings_by_default() {
+        let channel = channel_receiving_messages(&[
+            (PING.0, PING.1.to_string()),
+            (CHANNEL_NAMESPACE, media_status(1, &[(0, 42.0)])),
+        ]);
+
+        assert!(channel.wait_for_status(&[1], 0).is_ok());
+        assert_eq!(channel.message_manager.drain().len(), 1);
     }
 
     #[test]

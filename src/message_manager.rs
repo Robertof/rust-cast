@@ -46,6 +46,7 @@ where
     stream: Lock<S>,
     request_counter: Lock<NonZeroU32>,
     deadline: Lock<Option<Instant>>,
+    answer_pings: Lock<bool>,
 }
 
 impl<S> MessageManager<S>
@@ -58,7 +59,15 @@ where
             message_buffer: Lock::new(vec![]),
             request_counter: Lock::new(NonZeroU32::MIN),
             deadline: Lock::new(None),
+            answer_pings: Lock::new(false),
         }
+    }
+
+    /// Sets whether heartbeat pings received while waiting for messages with `receive_find_map`
+    /// are automatically replied to (the default is not to). Cast devices close connections whose
+    /// pings go unanswered for a few seconds, so this allows waiting for longer than that.
+    pub fn set_answer_pings(&self, answer_pings: bool) {
+        *self.answer_pings.borrow_mut() = answer_pings;
     }
 
     /// Sets a deadline for waiting for messages with `receive_find_map`, which is used by all the
@@ -174,11 +183,20 @@ where
         loop {
             let message = self.read()?;
 
-            // If message is found, just return mapped result, otherwise keep unprocessed message
-            // in the buffer, it can be later retrieved with `receive`.
-            match f(&message)? {
-                Some(r) => return Ok(r),
-                None => self.message_buffer.borrow_mut().push(message),
+            if *self.answer_pings.borrow() && is_ping(&message) {
+                self.send(CastMessage {
+                    namespace: message.namespace,
+                    source: message.destination,
+                    destination: message.source,
+                    payload: CastMessagePayload::String(r#"{"type":"PONG"}"#.to_string()),
+                })?;
+            } else {
+                // If message is found, just return mapped result, otherwise keep unprocessed
+                // message in the buffer, it can be later retrieved with `receive`.
+                match f(&message)? {
+                    Some(r) => return Ok(r),
+                    None => self.message_buffer.borrow_mut().push(message),
+                }
             }
 
             if matches!(*self.deadline.borrow(), Some(deadline) if Instant::now() >= deadline) {
@@ -248,5 +266,17 @@ where
                 }
             },
         })
+    }
+}
+
+const HEARTBEAT_NAMESPACE: &str = "urn:x-cast:com.google.cast.tp.heartbeat";
+
+fn is_ping(message: &CastMessage) -> bool {
+    match message.payload {
+        CastMessagePayload::String(ref payload) if message.namespace == HEARTBEAT_NAMESPACE => {
+            serde_json::from_str::<serde_json::Value>(payload)
+                .map_or(false, |payload| payload["type"] == "PING")
+        }
+        _ => false,
     }
 }
