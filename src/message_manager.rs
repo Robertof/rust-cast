@@ -4,6 +4,8 @@ use std::{
     time::Instant,
 };
 
+use protobuf::Message;
+
 use crate::{
     cast::{
         cast_channel,
@@ -107,14 +109,9 @@ where
             }
         };
 
-        let message_content_buffer = utils::to_vec(&raw_message)?;
-        let message_length_buffer =
-            utils::write_u32_to_buffer(message_content_buffer.len() as u32)?;
+        let frame = utils::to_frame(&raw_message)?;
 
-        let writer = &mut *self.stream.borrow_mut();
-
-        writer.write_all(&message_length_buffer)?;
-        writer.write_all(&message_content_buffer)?;
+        self.stream.borrow_mut().write_all(&frame)?;
 
         log::debug!("Message sent: {:?}", raw_message);
 
@@ -236,33 +233,29 @@ where
     ///
     /// `Result` containing parsed `CastMessage` or `Error`.
     fn read(&self) -> Result<CastMessage, Error> {
-        let mut buffer: [u8; 4] = [0; 4];
+        let buffer = {
+            let reader = &mut *self.stream.borrow_mut();
 
-        let reader = &mut *self.stream.borrow_mut();
+            let mut length = [0; 4];
+            reader.read_exact(&mut length)?;
 
-        reader.read_exact(&mut buffer)?;
+            let mut buffer = vec![0; u32::from_be_bytes(length) as usize];
+            reader.read_exact(&mut buffer)?;
+            buffer
+        };
 
-        let length = utils::read_u32_from_buffer(&buffer)?;
-
-        let mut buffer: Vec<u8> = Vec::with_capacity(length as usize);
-        let mut limited_reader = reader.take(u64::from(length));
-
-        limited_reader.read_to_end(&mut buffer)?;
-
-        let raw_message = utils::from_vec::<cast_channel::CastMessage>(buffer.to_vec())?;
+        let mut raw_message = cast_channel::CastMessage::parse_from_bytes(&buffer)?;
 
         log::debug!("Message received: {:?}", raw_message);
 
         Ok(CastMessage {
-            namespace: raw_message.namespace().to_string(),
-            source: raw_message.source_id().to_string(),
-            destination: raw_message.destination_id().to_string(),
+            namespace: raw_message.take_namespace(),
+            source: raw_message.take_source_id(),
+            destination: raw_message.take_destination_id(),
             payload: match raw_message.payload_type() {
-                PayloadType::STRING => {
-                    CastMessagePayload::String(raw_message.payload_utf8().to_string())
-                }
+                PayloadType::STRING => CastMessagePayload::String(raw_message.take_payload_utf8()),
                 PayloadType::BINARY => {
-                    CastMessagePayload::Binary(raw_message.payload_binary().to_owned())
+                    CastMessagePayload::Binary(raw_message.take_payload_binary())
                 }
             },
         })

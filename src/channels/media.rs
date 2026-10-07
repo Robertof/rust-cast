@@ -1396,11 +1396,9 @@ mod tests {
             message.set_payload_type(PayloadType::STRING);
             message.set_payload_utf8(payload.clone());
 
-            let body = utils::to_vec(&message).unwrap();
             stream
                 .read_buffer
-                .extend(utils::write_u32_to_buffer(body.len() as u32).unwrap());
-            stream.read_buffer.extend(body);
+                .extend(utils::to_frame(&message).unwrap());
         }
 
         MediaChannel {
