@@ -438,83 +438,94 @@ where
     }
 
     pub fn can_handle(&self, message: &CastMessage) -> bool {
-        message.namespace == CHANNEL_NAMESPACE
+        can_handle(message)
     }
 
     pub fn parse(&self, message: &CastMessage) -> Result<ReceiverResponse, Error> {
-        let reply = match message.payload {
-            CastMessagePayload::String(ref payload) => {
-                serde_json::from_str::<serde_json::Value>(payload)?
-            }
-            _ => {
-                return Err(Error::Internal(
-                    "Binary payload is not supported!".to_string(),
-                ))
-            }
-        };
-
-        let message_type = reply
-            .as_object()
-            .and_then(|object| object.get("type"))
-            .and_then(|property| property.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        let response = match message_type.as_ref() {
-            MESSAGE_TYPE_RECEIVER_STATUS => {
-                let status_reply: proxies::receiver::StatusReply =
-                    serde_json::value::from_value(reply)?;
-
-                let status = Status {
-                    request_id: status_reply.request_id,
-                    applications: status_reply
-                        .status
-                        .applications
-                        .iter()
-                        .map(|app| Application {
-                            app_id: app.app_id.clone(),
-                            session_id: app.session_id.clone(),
-                            transport_id: app.transport_id.clone(),
-                            namespaces: app
-                                .namespaces
-                                .iter()
-                                .map(|ns| ns.name.clone())
-                                .collect::<Vec<String>>(),
-                            display_name: app.display_name.clone(),
-                            status_text: app.status_text.clone(),
-                        })
-                        .collect::<Vec<Application>>(),
-                    is_active_input: status_reply.status.is_active_input,
-                    is_stand_by: status_reply.status.is_stand_by,
-                    volume: Volume {
-                        level: status_reply.status.volume.level,
-                        muted: status_reply.status.volume.muted,
-                    },
-                };
-
-                ReceiverResponse::Status(status)
-            }
-            MESSAGE_TYPE_LAUNCH_ERROR => {
-                let reply: proxies::receiver::LaunchErrorReply =
-                    serde_json::value::from_value(reply)?;
-
-                ReceiverResponse::LaunchError(LaunchError {
-                    request_id: reply.request_id,
-                    reason: reply.reason,
-                })
-            }
-            MESSAGE_TYPE_INVALID_REQUEST => {
-                let reply: proxies::receiver::InvalidRequestReply =
-                    serde_json::value::from_value(reply)?;
-
-                ReceiverResponse::InvalidRequest(InvalidRequest {
-                    request_id: reply.request_id,
-                    reason: reply.reason,
-                })
-            }
-            _ => ReceiverResponse::NotImplemented(message_type.to_string(), reply),
-        };
-
-        Ok(response)
+        parse(message)
     }
+}
+
+/// Whether `message` belongs to the receiver channel. Unlike the channel's method, it does not
+/// require a channel, e.g. to inspect messages received by an observer.
+pub fn can_handle(message: &CastMessage) -> bool {
+    message.namespace == CHANNEL_NAMESPACE
+}
+
+/// Parses a message of the receiver channel. Unlike the channel's method, it does not require a
+/// channel, e.g. to inspect messages received by an observer.
+pub fn parse(message: &CastMessage) -> Result<ReceiverResponse, Error> {
+    let reply = match message.payload {
+        CastMessagePayload::String(ref payload) => {
+            serde_json::from_str::<serde_json::Value>(payload)?
+        }
+        _ => {
+            return Err(Error::Internal(
+                "Binary payload is not supported!".to_string(),
+            ))
+        }
+    };
+
+    let message_type = reply
+        .as_object()
+        .and_then(|object| object.get("type"))
+        .and_then(|property| property.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let response = match message_type.as_ref() {
+        MESSAGE_TYPE_RECEIVER_STATUS => {
+            let status_reply: proxies::receiver::StatusReply =
+                serde_json::value::from_value(reply)?;
+
+            let status = Status {
+                request_id: status_reply.request_id,
+                applications: status_reply
+                    .status
+                    .applications
+                    .iter()
+                    .map(|app| Application {
+                        app_id: app.app_id.clone(),
+                        session_id: app.session_id.clone(),
+                        transport_id: app.transport_id.clone(),
+                        namespaces: app
+                            .namespaces
+                            .iter()
+                            .map(|ns| ns.name.clone())
+                            .collect::<Vec<String>>(),
+                        display_name: app.display_name.clone(),
+                        status_text: app.status_text.clone(),
+                    })
+                    .collect::<Vec<Application>>(),
+                is_active_input: status_reply.status.is_active_input,
+                is_stand_by: status_reply.status.is_stand_by,
+                volume: Volume {
+                    level: status_reply.status.volume.level,
+                    muted: status_reply.status.volume.muted,
+                },
+            };
+
+            ReceiverResponse::Status(status)
+        }
+        MESSAGE_TYPE_LAUNCH_ERROR => {
+            let reply: proxies::receiver::LaunchErrorReply = serde_json::value::from_value(reply)?;
+
+            ReceiverResponse::LaunchError(LaunchError {
+                request_id: reply.request_id,
+                reason: reply.reason,
+            })
+        }
+        MESSAGE_TYPE_INVALID_REQUEST => {
+            let reply: proxies::receiver::InvalidRequestReply =
+                serde_json::value::from_value(reply)?;
+
+            ReceiverResponse::InvalidRequest(InvalidRequest {
+                request_id: reply.request_id,
+                reason: reply.reason,
+            })
+        }
+        _ => ReceiverResponse::NotImplemented(message_type.to_string(), reply),
+    };
+
+    Ok(response)
 }

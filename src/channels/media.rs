@@ -1147,116 +1147,11 @@ where
     }
 
     pub fn can_handle(&self, message: &CastMessage) -> bool {
-        message.namespace == CHANNEL_NAMESPACE
+        can_handle(message)
     }
 
     pub fn parse(&self, message: &CastMessage) -> Result<MediaResponse, Error> {
-        let reply = match message.payload {
-            CastMessagePayload::String(ref payload) => {
-                serde_json::from_str::<serde_json::Value>(payload)?
-            }
-            _ => {
-                return Err(Error::Internal(
-                    "Binary payload is not supported!".to_string(),
-                ));
-            }
-        };
-
-        let message_type = reply
-            .as_object()
-            .and_then(|object| object.get("type"))
-            .and_then(|property| property.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        let response = match message_type.as_ref() {
-            MESSAGE_TYPE_MEDIA_STATUS => {
-                let reply: proxies::media::StatusReply = serde_json::value::from_value(reply)?;
-
-                let statuses_entries = reply.status.iter().map(|x| {
-                    StatusEntry {
-                        active_track_ids: x.active_track_ids.clone(),
-                        media_session_id: x.media_session_id,
-                        media: x.media.as_ref().map(|m| {
-                            Media {
-                                content_id: m.content_id.to_string(),
-                                stream_type: StreamType::from_str(m.stream_type.as_ref()).unwrap(),
-                                content_type: m.content_type.to_string(),
-                                metadata: None, // TODO
-                                tracks: m.tracks.iter().map(|t| {
-                                    Track {
-                                        id: t.id,
-                                        track_type: TrackType::from_str(t.typ.as_ref()).unwrap(),
-                                        name: t.name.clone(),
-                                        language: t.language.clone(),
-                                    }
-                                }).collect(),
-                                duration: m.duration,
-                            }
-                        }),
-                        live_seekable_range: x.live_seekable_range.clone(),
-                        playback_rate: x.playback_rate,
-                        player_state: PlayerState::from_str(x.player_state.as_ref()).unwrap(),
-                        idle_reason: x
-                            .idle_reason
-                            .as_ref()
-                            .map(|reason| IdleReason::from_str(reason).unwrap()),
-                        current_time: x.current_time,
-                        supported_media_commands: x.supported_media_commands,
-                    }
-                });
-
-                MediaResponse::Status(Status {
-                    request_id: reply.request_id,
-                    entries: statuses_entries.collect::<Vec<StatusEntry>>(),
-                })
-            }
-            MESSAGE_TYPE_LOAD_CANCELLED => {
-                let reply: proxies::media::LoadCancelledReply =
-                    serde_json::value::from_value(reply)?;
-
-                MediaResponse::LoadCancelled(LoadCancelled {
-                    request_id: reply.request_id,
-                })
-            }
-            MESSAGE_TYPE_LOAD_FAILED => {
-                let reply: proxies::media::LoadFailedReply = serde_json::value::from_value(reply)?;
-
-                MediaResponse::LoadFailed(LoadFailed {
-                    request_id: reply.request_id,
-                })
-            }
-            MESSAGE_TYPE_INVALID_PLAYER_STATE => {
-                let reply: proxies::media::InvalidPlayerStateReply =
-                    serde_json::value::from_value(reply)?;
-
-                MediaResponse::InvalidPlayerState(InvalidPlayerState {
-                    request_id: reply.request_id,
-                })
-            }
-            MESSAGE_TYPE_INVALID_REQUEST => {
-                let reply: proxies::media::InvalidRequestReply =
-                    serde_json::value::from_value(reply)?;
-
-                MediaResponse::InvalidRequest(InvalidRequest {
-                    request_id: reply.request_id,
-                    reason: reply.reason,
-                })
-            }
-            MESSAGE_TYPE_ERROR => {
-                let reply: proxies::media::MediaErrorReply = serde_json::value::from_value(reply)?;
-                let detailed_error_code =
-                    MediaDetailedErrorCode::try_from(reply.detailed_error_code)?;
-
-                MediaResponse::Error(MediaError {
-                    detailed_error_code,
-                    message_type: reply.message_type,
-                })
-            }
-            _ => MediaResponse::NotImplemented(message_type.to_string(), reply),
-        };
-
-        Ok(response)
+        parse(message)
     }
 
     /// Waits for the reply to any of the requests in `request_ids`, and returns the status entry
@@ -1355,6 +1250,122 @@ where
             payload: CastMessagePayload::String(serde_json::to_string(payload)?),
         })
     }
+}
+
+/// Whether `message` belongs to the media channel. Unlike the channel's method, it does not
+/// require a channel, e.g. to inspect messages received by an observer.
+pub fn can_handle(message: &CastMessage) -> bool {
+    message.namespace == CHANNEL_NAMESPACE
+}
+
+/// Parses a message of the media channel. Unlike the channel's method, it does not require a
+/// channel, e.g. to inspect messages received by an observer.
+pub fn parse(message: &CastMessage) -> Result<MediaResponse, Error> {
+    let reply = match message.payload {
+        CastMessagePayload::String(ref payload) => {
+            serde_json::from_str::<serde_json::Value>(payload)?
+        }
+        _ => {
+            return Err(Error::Internal(
+                "Binary payload is not supported!".to_string(),
+            ));
+        }
+    };
+
+    let message_type = reply
+        .as_object()
+        .and_then(|object| object.get("type"))
+        .and_then(|property| property.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let response = match message_type.as_ref() {
+        MESSAGE_TYPE_MEDIA_STATUS => {
+            let reply: proxies::media::StatusReply = serde_json::value::from_value(reply)?;
+
+            let statuses_entries = reply.status.iter().map(|x| {
+                StatusEntry {
+                    active_track_ids: x.active_track_ids.clone(),
+                    media_session_id: x.media_session_id,
+                    media: x.media.as_ref().map(|m| {
+                        Media {
+                            content_id: m.content_id.to_string(),
+                            stream_type: StreamType::from_str(m.stream_type.as_ref()).unwrap(),
+                            content_type: m.content_type.to_string(),
+                            metadata: None, // TODO
+                            tracks: m
+                                .tracks
+                                .iter()
+                                .map(|t| Track {
+                                    id: t.id,
+                                    track_type: TrackType::from_str(t.typ.as_ref()).unwrap(),
+                                    name: t.name.clone(),
+                                    language: t.language.clone(),
+                                })
+                                .collect(),
+                            duration: m.duration,
+                        }
+                    }),
+                    live_seekable_range: x.live_seekable_range.clone(),
+                    playback_rate: x.playback_rate,
+                    player_state: PlayerState::from_str(x.player_state.as_ref()).unwrap(),
+                    idle_reason: x
+                        .idle_reason
+                        .as_ref()
+                        .map(|reason| IdleReason::from_str(reason).unwrap()),
+                    current_time: x.current_time,
+                    supported_media_commands: x.supported_media_commands,
+                }
+            });
+
+            MediaResponse::Status(Status {
+                request_id: reply.request_id,
+                entries: statuses_entries.collect::<Vec<StatusEntry>>(),
+            })
+        }
+        MESSAGE_TYPE_LOAD_CANCELLED => {
+            let reply: proxies::media::LoadCancelledReply = serde_json::value::from_value(reply)?;
+
+            MediaResponse::LoadCancelled(LoadCancelled {
+                request_id: reply.request_id,
+            })
+        }
+        MESSAGE_TYPE_LOAD_FAILED => {
+            let reply: proxies::media::LoadFailedReply = serde_json::value::from_value(reply)?;
+
+            MediaResponse::LoadFailed(LoadFailed {
+                request_id: reply.request_id,
+            })
+        }
+        MESSAGE_TYPE_INVALID_PLAYER_STATE => {
+            let reply: proxies::media::InvalidPlayerStateReply =
+                serde_json::value::from_value(reply)?;
+
+            MediaResponse::InvalidPlayerState(InvalidPlayerState {
+                request_id: reply.request_id,
+            })
+        }
+        MESSAGE_TYPE_INVALID_REQUEST => {
+            let reply: proxies::media::InvalidRequestReply = serde_json::value::from_value(reply)?;
+
+            MediaResponse::InvalidRequest(InvalidRequest {
+                request_id: reply.request_id,
+                reason: reply.reason,
+            })
+        }
+        MESSAGE_TYPE_ERROR => {
+            let reply: proxies::media::MediaErrorReply = serde_json::value::from_value(reply)?;
+            let detailed_error_code = MediaDetailedErrorCode::try_from(reply.detailed_error_code)?;
+
+            MediaResponse::Error(MediaError {
+                detailed_error_code,
+                message_type: reply.message_type,
+            })
+        }
+        _ => MediaResponse::NotImplemented(message_type.to_string(), reply),
+    };
+
+    Ok(response)
 }
 
 #[cfg(test)]
