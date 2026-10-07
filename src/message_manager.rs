@@ -268,7 +268,7 @@ fn is_ping(message: &CastMessage) -> bool {
     match message.payload {
         CastMessagePayload::String(ref payload) if message.namespace == HEARTBEAT_NAMESPACE => {
             serde_json::from_str::<serde_json::Value>(payload)
-                .map_or(false, |payload| payload["type"] == "PING")
+                .is_ok_and(|payload| payload["type"] == "PING")
         }
         _ => false,
     }
