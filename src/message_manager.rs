@@ -38,6 +38,18 @@ pub struct CastMessage {
     pub payload: CastMessagePayload,
 }
 
+/// Observes every message read from the stream, see [`MessageManager::set_observer`]. It is
+/// implemented for closures taking a `&CastMessage`.
+pub trait Observer: Send {
+    fn on_message(&self, message: &CastMessage);
+}
+
+impl<F: Fn(&CastMessage) + Send> Observer for F {
+    fn on_message(&self, message: &CastMessage) {
+        self(message)
+    }
+}
+
 /// Static structure that is responsible for (de)serializing and sending/receiving Cast protocol
 /// messages.
 pub struct MessageManager<S>
@@ -49,6 +61,7 @@ where
     request_counter: Lock<NonZeroU32>,
     deadline: Lock<Option<Instant>>,
     answer_pings: Lock<bool>,
+    observer: Lock<Option<Box<dyn Observer>>>,
 }
 
 impl<S> MessageManager<S>
@@ -62,6 +75,7 @@ where
             request_counter: Lock::new(NonZeroU32::MIN),
             deadline: Lock::new(None),
             answer_pings: Lock::new(false),
+            observer: Lock::new(None),
         }
     }
 
@@ -81,6 +95,17 @@ where
     /// received. Unlike a read timeout, the connection can still be used afterwards.
     pub fn set_deadline(&self, deadline: Option<Instant>) {
         *self.deadline.borrow_mut() = deadline;
+    }
+
+    /// Sets an observer of every message read from the stream, replacing any previous one. It is
+    /// given the messages in the order they are received, before anything else is done with them
+    /// (e.g. matching them in `receive_find_map`, or buffering them). This allows keeping track of
+    /// messages nobody is waiting for, such as status broadcasts. Messages returned from the
+    /// internal buffer are not observed again.
+    ///
+    /// The observer must not use this `MessageManager`.
+    pub fn set_observer(&self, observer: impl Observer + 'static) {
+        *self.observer.borrow_mut() = Some(Box::new(observer));
     }
 
     /// Sends `message` to the Cast Device.
@@ -227,12 +252,22 @@ where
         f(&self.stream.borrow())
     }
 
-    /// Reads next `CastMessage` from the stream.
+    /// Reads next `CastMessage` from the stream, passing it to the observer (if any).
     ///
     /// # Return value
     ///
     /// `Result` containing parsed `CastMessage` or `Error`.
     fn read(&self) -> Result<CastMessage, Error> {
+        let message = self.read_from_stream()?;
+
+        if let Some(observer) = &*self.observer.borrow() {
+            observer.on_message(&message);
+        }
+
+        Ok(message)
+    }
+
+    fn read_from_stream(&self) -> Result<CastMessage, Error> {
         let buffer = {
             let reader = &mut *self.stream.borrow_mut();
 
@@ -271,5 +306,50 @@ fn is_ping(message: &CastMessage) -> bool {
                 .is_ok_and(|payload| payload["type"] == "PING")
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        io::Cursor,
+        sync::{Arc, Mutex},
+    };
+
+    use super::*;
+
+    fn message(namespace: &str) -> CastMessage {
+        CastMessage {
+            namespace: namespace.to_string(),
+            source: "receiver-0".to_string(),
+            destination: "sender-0".to_string(),
+            payload: CastMessagePayload::String("{}".to_string()),
+        }
+    }
+
+    #[test]
+    fn observer_sees_every_message_once_in_arrival_order() {
+        // frame the messages to receive with `send`.
+        let writer = MessageManager::new(Cursor::new(Vec::new()));
+        for namespace in ["a", "b", "c"] {
+            writer.send(message(namespace)).unwrap();
+        }
+        let stream = writer.stream.borrow().get_ref().clone();
+
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        let manager = MessageManager::new(Cursor::new(stream));
+        manager.set_observer({
+            let observed = observed.clone();
+            move |message: &CastMessage| observed.lock().unwrap().push(message.namespace.clone())
+        });
+
+        // "a" is buffered while looking for "b", then returned from the buffer.
+        manager
+            .receive_find_map(|message| Ok((message.namespace == "b").then_some(())))
+            .unwrap();
+        assert_eq!(manager.receive().unwrap().namespace, "a");
+        assert_eq!(manager.receive().unwrap().namespace, "c");
+
+        assert_eq!(*observed.lock().unwrap(), ["a", "b", "c"]);
     }
 }
