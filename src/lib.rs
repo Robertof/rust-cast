@@ -240,7 +240,7 @@ impl<'a> CastDevice<'a> {
     ///
     /// match cast_device.receive() {
     ///     Ok(ChannelMessage::Connection(res)) => log::debug!("Connection message: {:?}", res),
-    ///     Ok(ChannelMessage::Heartbeat(_)) => cast_device.heartbeat.pong()?,
+    ///     Ok(ChannelMessage::Heartbeat(_)) => cast_device.heartbeat.pong("receiver-0")?,
     ///     Ok(_) => {},
     ///     Err(err) => log::error!("Error occurred while receiving message {}", err)
     /// }

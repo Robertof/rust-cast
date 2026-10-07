@@ -199,6 +199,7 @@ fn play_media(
                 stream_type: media_stream_type,
                 duration: None,
                 metadata: None,
+                tracks: vec![],
             },
         )
         .unwrap();
@@ -518,7 +519,7 @@ fn main() {
                     println!("[Heartbeat] {:?}", response);
 
                     if let HeartbeatResponse::Ping = response {
-                        cast_device.heartbeat.pong().unwrap();
+                        cast_device.heartbeat.pong("receiver-0").unwrap();
                     }
                 }
 
