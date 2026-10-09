@@ -24,8 +24,6 @@ pub mod heartbeat {
 
 /// Proxy classes for the `media` channel.
 pub mod media {
-    use std::ops::Range;
-
     use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Debug)]
@@ -253,6 +251,14 @@ pub mod media {
         }
     }
 
+    /// Unlike `Range`, ignores the other fields receivers might send (e.g. `isMovingWindow` and
+    /// `isLiveDone`).
+    #[derive(Deserialize, Debug)]
+    pub struct SeekableRange {
+        pub start: f32,
+        pub end: f32,
+    }
+
     #[derive(Deserialize, Debug)]
     pub struct Status {
         #[serde(default, rename = "activeTrackIds")]
@@ -262,7 +268,7 @@ pub mod media {
         #[serde(default)]
         pub media: Option<Media>,
         #[serde(rename = "liveSeekableRange")]
-        pub live_seekable_range: Option<Range<f32>>,
+        pub live_seekable_range: Option<SeekableRange>,
         #[serde(rename = "playbackRate")]
         pub playback_rate: f32,
         #[serde(rename = "playerState")]

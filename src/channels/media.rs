@@ -1306,7 +1306,10 @@ pub fn parse(message: &CastMessage) -> Result<MediaResponse, Error> {
                             duration: m.duration,
                         }
                     }),
-                    live_seekable_range: x.live_seekable_range.clone(),
+                    live_seekable_range: x
+                        .live_seekable_range
+                        .as_ref()
+                        .map(|range| range.start..range.end),
                     playback_rate: x.playback_rate,
                     player_state: PlayerState::from_str(x.player_state.as_ref()).unwrap(),
                     idle_reason: x
@@ -1435,6 +1438,28 @@ mod tests {
             "{{\"type\":\"MEDIA_STATUS\",\"requestId\":{},\"status\":[{}]}}",
             request_id, entries
         )
+    }
+
+    #[test]
+    fn test_parse_live_seekable_range_with_other_fields() {
+        let message = CastMessage {
+            namespace: CHANNEL_NAMESPACE.into(),
+            source: DEFAULT_RECEIVER_ID.into(),
+            destination: DEFAULT_SENDER_ID.into(),
+            payload: CastMessagePayload::String(
+                r#"{"type":"MEDIA_STATUS","requestId":0,"status":[{"mediaSessionId":1,
+                "playbackRate":1,"playerState":"PLAYING","currentTime":42,
+                "supportedMediaCommands":63,"liveSeekableRange":{"start":12,"end":72,
+                "isMovingWindow":true,"isLiveDone":false}}]}"#
+                    .into(),
+            ),
+        };
+
+        let MediaResponse::Status(status) = parse(&message).unwrap() else {
+            panic!("not a status");
+        };
+
+        assert_eq!(status.entries[0].live_seekable_range, Some(12.0..72.0));
     }
 
     #[test]
